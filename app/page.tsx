@@ -1,12 +1,10 @@
 "use client";
 
-import { useRef } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
-  EyeOpenIcon,
-  CursorArrowIcon,
   RocketIcon,
-  CheckIcon,
-  Cross2Icon,
   Pencil1Icon,
   ReaderIcon,
   CodeIcon,
@@ -22,19 +20,26 @@ import { WordRotate } from "@/components/ui/word-rotate";
 import WindowAnimation from "@/components/ui/window-animation";
 import CuyorToolbar from "@/components/ui/cuyor-toolbar";
 import { Kbd } from "@/components/ui/kbd";
-import { MousePointer, MousePointer2, Pointer, ScanEye } from "lucide-react";
+import { MousePointer2, ScanEye } from "lucide-react";
 
 export default function Home() {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const emailRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  const handleInput = () => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = `${textarea.scrollHeight}px`;
+  const handleEmailSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (email) {
+      router.push(`/register?email=${encodeURIComponent(email)}`);
     }
   };
+
+  useEffect(() => {
+    const stored = localStorage.getItem("cuyor_auth");
+    if (stored) {
+      setIsLoggedIn(true);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-background relative">
@@ -72,15 +77,18 @@ export default function Home() {
             </a>
           </nav>
           <div className="flex items-center gap-4">
-            <a
-              href="#"
+            <Link
+              href={isLoggedIn ? "/dashboard" : "/login"}
               className="hidden md:block text-sm text-foreground/70 hover:text-foreground transition-colors"
             >
-              Login
-            </a>
-            <div className="flex items-center justify-center px-5 h-9 bg-foreground text-background rounded-md cursor-pointer text-sm font-medium hover:bg-foreground/90 transition-colors">
+              {isLoggedIn ? "Dashboard" : "Login"}
+            </Link>
+            <Link
+              href="/register"
+              className="flex items-center justify-center px-5 h-9 bg-foreground text-background rounded-md cursor-pointer text-sm font-medium hover:bg-foreground/90 transition-colors"
+            >
               Try Cuyor
-            </div>
+            </Link>
           </div>
         </div>
       </header>
@@ -122,18 +130,26 @@ export default function Home() {
                 on exactly where to click next.
               </p>
 
-              {/* Search Input */}
-              <form className="border border-[--border-primary] rounded-3xl pl-4 pr-2 py-2 flex items-center gap-2 max-w-md mb-4 bg-white">
+              {/* Email Input */}
+              <form
+                onSubmit={handleEmailSubmit}
+                className="border border-[--border-primary] rounded-3xl pl-4 pr-2 py-2 flex items-center gap-2 max-w-md mb-4 bg-white"
+              >
                 <input
-                  placeholder="Enter you email"
+                  placeholder="Enter your email"
                   autoComplete="off"
                   className="outline-none border-none w-full bg-transparent resize-none overflow-hidden text-sm leading-normal"
                   style={{ maxHeight: "120px" }}
                   type="email"
                   required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
-                <button className="bg-primary text-white px-4 h-7 rounded-full btn-shadow cursor-pointer shrink-0 text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1">
-                  Join Waitlist <ChevronRightIcon className="w-3 h-3" />
+                <button
+                  type="submit"
+                  className="bg-primary text-white px-4 h-7 rounded-full btn-shadow cursor-pointer shrink-0 text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1"
+                >
+                  Get Started <ChevronRightIcon className="w-3 h-3" />
                 </button>
               </form>
 
@@ -326,9 +342,12 @@ export default function Home() {
                     <span>All macOS apps</span>
                   </div>
                 </div>
-                <button className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors">
+                <Link
+                  href="/dashboard"
+                  className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors"
+                >
                   Download <ChevronRightIcon className="w-4 h-4" />
-                </button>
+                </Link>
               </div>
 
               {/* Standard Plan */}
@@ -461,17 +480,25 @@ export default function Home() {
                 <CuyorIcon size={20} />
                 <span className="font-bold text-white">Cuyor</span>
               </div>
-              <div className="border border-white/20 rounded-3xl pl-4 pr-2 py-2 flex items-center gap-2 max-w-xs mb-4">
+              <form
+                onSubmit={handleEmailSubmit}
+                className="border border-white/20 rounded-3xl pl-4 pr-2 py-2 flex items-center gap-2 max-w-xs mb-4"
+              >
                 <input
-                  ref={emailRef}
+                  value={email}
+                  required
+                  onChange={(e) => setEmail(e.target.value)}
                   type="email"
                   placeholder="Enter your email"
                   className="outline-none border-none w-full bg-transparent text-sm text-white placeholder:text-white/40"
                 />
-                <button className="bg-primary text-white px-3 h-6 rounded-full text-xs shrink-0">
+                <button
+                  type="submit"
+                  className="bg-primary text-white px-3 h-6 rounded-full text-xs shrink-0"
+                >
                   <ChevronRightIcon className="w-3 h-3" />
                 </button>
-              </div>
+              </form>
               <div className="flex gap-2">
                 <div className="inline-flex items-center gap-1 px-2.5 py-1 border border-white/20 rounded-full text-xs text-white/60">
                   <Pencil1Icon className="w-3 h-3" /> Navigate
@@ -512,7 +539,10 @@ export default function Home() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a
+                    href="/dashboard"
+                    className="hover:text-white transition-colors"
+                  >
                     Download app
                   </a>
                 </li>
