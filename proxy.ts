@@ -10,6 +10,7 @@ const DEFAULT_RATE_LIMIT = 60;
 const ROUTE_LIMITS: Record<string, number> = {
   "/api/login": 10,
   "/api/register": 10,
+  "/api/beta-invite": 10,
   "/api/download": 6,
 };
 

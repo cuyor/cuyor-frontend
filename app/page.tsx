@@ -1,8 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useState } from "react";
 import {
   RocketIcon,
   Pencil1Icon,
@@ -13,6 +11,7 @@ import {
   GitHubLogoIcon,
   LinkedInLogoIcon,
 } from "@radix-ui/react-icons";
+import { toast } from "sonner";
 
 import CuyorIcon from "@/components/ui/cuyor-icon";
 import { Highlighter } from "@/components/ui/highlighter";
@@ -20,26 +19,53 @@ import { WordRotate } from "@/components/ui/word-rotate";
 import WindowAnimation from "@/components/ui/window-animation";
 import CuyorToolbar from "@/components/ui/cuyor-toolbar";
 import { Kbd } from "@/components/ui/kbd";
+import { Button } from "@/components/ui/button";
 import { MousePointer2, ScanEye } from "lucide-react";
 
 export default function Home() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isBetaInvite = process.env.NEXT_PUBLIC_BETA_INVITE !== "false";
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
+  const handleEmailSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (email) {
-      router.push(`/register?email=${encodeURIComponent(email)}`);
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail || !trimmedEmail.includes("@")) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/beta-invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-cuyor-client": "webapp",
+        },
+        body: JSON.stringify({ email: trimmedEmail }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Unable to join the beta right now.");
+      }
+
+      toast.success("You are on the beta list.", {
+        description: data.detail || "We will reach out when access opens.",
+      });
+      setEmail("");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Something went wrong.",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
-  useEffect(() => {
-    const stored = localStorage.getItem("cuyor_auth");
-    if (stored) {
-      setIsLoggedIn(true);
-    }
-  }, []);
 
   return (
     <div className="min-h-screen bg-background relative">
@@ -77,18 +103,22 @@ export default function Home() {
             </a>
           </nav>
           <div className="flex items-center gap-4">
-            <Link
-              href={isLoggedIn ? "/dashboard" : "/login"}
-              className="hidden md:block text-sm text-foreground/70 hover:text-foreground transition-colors"
+            {isBetaInvite ? (
+              <span className="hidden md:inline-flex items-center rounded-full border border-[--border-secondary] px-3 py-1 text-xs text-foreground/60">
+                Beta invite only
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              onClick={() => {
+                document
+                  .getElementById("beta-invite")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="hidden md:inline-flex h-9 px-5"
             >
-              {isLoggedIn ? "Dashboard" : "Login"}
-            </Link>
-            <Link
-              href="/register"
-              className="flex items-center justify-center px-5 h-9 bg-foreground text-background rounded-md cursor-pointer text-sm font-medium hover:bg-foreground/90 transition-colors"
-            >
-              Try Cuyor
-            </Link>
+              Join beta
+            </Button>
           </div>
         </div>
       </header>
@@ -108,7 +138,10 @@ export default function Home() {
 
       <main className="w-full">
         {/* Hero Section */}
-        <section className="px-8 py-20 max-w-7xl mx-auto min-h-[75vh] flex items-center">
+        <section
+          id="beta-invite"
+          className="px-8 py-20 max-w-7xl mx-auto min-h-[75vh] flex items-center"
+        >
           <div className="flex items-center justify-between gap-16 w-full">
             <div className="flex-1 max-w-xl">
               <h1 className="text-5xl leading-tight mb-4">
@@ -145,12 +178,14 @@ export default function Home() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
-                <button
+                <Button
                   type="submit"
-                  className="bg-primary text-white px-4 h-7 rounded-full btn-shadow cursor-pointer shrink-0 text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1"
+                  disabled={isSubmitting}
+                  className="h-7 rounded-full px-4 btn-shadow shrink-0 text-sm font-medium flex items-center gap-1 bg-primary text-white hover:bg-primary/90"
                 >
-                  Get Started <ChevronRightIcon className="w-3 h-3" />
-                </button>
+                  {isSubmitting ? "Joining..." : "Join beta"}
+                  <ChevronRightIcon className="w-3 h-3" />
+                </Button>
               </form>
 
               {/* Quick Action Pills */}
@@ -300,15 +335,23 @@ export default function Home() {
           <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-[--border-secondary] p-8 flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-foreground mb-1">
-                New to macOS productivity tools?
+                New to the beta?
               </h3>
               <p className="text-sm text-foreground/60">
-                Start with Cuyor and master any interface in minutes.
+                Join the invite list and we will notify you as soon as access opens.
               </p>
             </div>
-            <button className="px-5 py-2.5 bg-foreground text-background rounded-md text-sm font-medium hover:bg-foreground/90 transition-colors">
-              Get Started
-            </button>
+            <Button
+              type="button"
+              onClick={() => {
+                document
+                  .getElementById("beta-invite")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="px-5 py-2.5"
+            >
+              Join beta
+            </Button>
           </div>
         </section>
 
@@ -342,12 +385,9 @@ export default function Home() {
                     <span>All macOS apps</span>
                   </div>
                 </div>
-                <Link
-                  href="/dashboard"
-                  className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors"
-                >
-                  Download <ChevronRightIcon className="w-4 h-4" />
-                </Link>
+                <Button type="button" variant="outline" className="gap-1 px-4 py-2">
+                  Learn more <ChevronRightIcon className="w-4 h-4" />
+                </Button>
               </div>
 
               {/* Standard Plan */}
@@ -368,9 +408,9 @@ export default function Home() {
                     <span>Code assistance</span>
                   </div>
                 </div>
-                <button className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors">
+                <Button type="button" variant="outline" className="gap-1 px-4 py-2">
                   Details <ChevronRightIcon className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
 
               {/* Max Plan */}
@@ -390,9 +430,9 @@ export default function Home() {
                     <span>Custom training</span>
                   </div>
                 </div>
-                <button className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors">
+                <Button type="button" variant="outline" className="gap-1 px-4 py-2">
                   Details <ChevronRightIcon className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -492,12 +532,13 @@ export default function Home() {
                   placeholder="Enter your email"
                   className="outline-none border-none w-full bg-transparent text-sm text-white placeholder:text-white/40"
                 />
-                <button
+                <Button
                   type="submit"
-                  className="bg-primary text-white px-3 h-6 rounded-full text-xs shrink-0"
+                  disabled={isSubmitting}
+                  className="h-6 rounded-full px-3 text-xs shrink-0 bg-primary text-white hover:bg-primary/90"
                 >
-                  <ChevronRightIcon className="w-3 h-3" />
-                </button>
+                  {isSubmitting ? "..." : <ChevronRightIcon className="w-3 h-3" />}
+                </Button>
               </form>
               <div className="flex gap-2">
                 <div className="inline-flex items-center gap-1 px-2.5 py-1 border border-white/20 rounded-full text-xs text-white/60">
@@ -519,9 +560,9 @@ export default function Home() {
               </h4>
               <ul className="space-y-2 text-xs">
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Cuyor
-                  </a>
+                  </span>
                 </li>
                 <li>
                   <a href="#" className="hover:text-white transition-colors">
@@ -539,12 +580,9 @@ export default function Home() {
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="/dashboard"
-                    className="hover:text-white transition-colors"
-                  >
+                  <button type="button" className="text-left hover:text-white transition-colors">
                     Download app
-                  </a>
+                  </button>
                 </li>
               </ul>
             </div>
@@ -555,24 +593,24 @@ export default function Home() {
               </h4>
               <ul className="space-y-2 text-xs">
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Vision models
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     App integrations
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Code assistance
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Team features
-                  </a>
+                  </span>
                 </li>
               </ul>
             </div>
@@ -583,24 +621,24 @@ export default function Home() {
               </h4>
               <ul className="space-y-2 text-xs">
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Blog
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Documentation
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Tutorials
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Use cases
-                  </a>
+                  </span>
                 </li>
               </ul>
             </div>
@@ -609,24 +647,24 @@ export default function Home() {
               <h4 className="font-semibold text-white text-xs mb-4">Company</h4>
               <ul className="space-y-2 text-xs">
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     About
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Careers
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Press
-                  </a>
+                  </span>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <span className="hover:text-white transition-colors">
                     Contact
-                  </a>
+                  </span>
                 </li>
               </ul>
             </div>
