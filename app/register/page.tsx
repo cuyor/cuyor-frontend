@@ -10,6 +10,7 @@ import {
   CheckIcon,
   Cross2Icon,
 } from "@radix-ui/react-icons";
+import { toast } from "sonner";
 import CuyorIcon from "@/components/ui/cuyor-icon";
 
 export default function RegisterPage() {
@@ -71,7 +72,9 @@ export default function RegisterPage() {
       localStorage.setItem("cuyor_auth", JSON.stringify(data));
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
