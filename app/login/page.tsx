@@ -8,7 +8,6 @@ import {
   EyeClosedIcon,
   ChevronRightIcon,
 } from "@radix-ui/react-icons";
-import { toast } from "sonner";
 import CuyorIcon from "@/components/ui/cuyor-icon";
 
 export default function LoginPage() {
@@ -46,7 +45,6 @@ export default function LoginPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setError(message);
-      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -148,7 +146,7 @@ export default function LoginPage() {
 
             {/* Error message */}
             {error && (
-              <div className="p-3 rounded-lg bg-red/10 border border-red/20 text-red text-sm">
+              <div className="p-3 rounded-lg bg-red/10 border border-red/20 text-red-600 text-sm">
                 {error}
               </div>
             )}
