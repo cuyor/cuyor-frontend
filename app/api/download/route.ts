@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const RELEASE_URL =
-  "https://github.com/cuyor/cuyor-client-mac/releases/latest/download/Cuyor-latest.dmg";
+  "https://github.com/cuyor/cuyor-frontend/releases/latest/download/Cuyor-latest.dmg";
 const DOWNLOAD_FILENAME = "Cuyor-latest.dmg";
 
 export async function GET() {
