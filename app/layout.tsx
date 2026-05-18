@@ -3,7 +3,6 @@ import { Inter, Geist } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { Toaster } from "@/components/ui/sonner";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -64,7 +63,6 @@ export default function RootLayout({
     <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className={`${interSans.variable} ${Avenir.className} antialiased`}>
         {children}
-        <Toaster richColors closeButton />
       </body>
     </html>
   );
