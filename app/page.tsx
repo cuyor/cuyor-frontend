@@ -422,25 +422,7 @@ export default function Home() {
               <div className="flex-1 space-y-6">
                 <div className="py-4">
                   <h3 className="font-semibold text-foreground mb-1">
-                    Cuyor v2.0 Released
-                  </h3>
-                  <p className="text-xs text-foreground/50 flex items-center gap-1">
-                    <RocketIcon className="w-3 h-3" /> Announcement
-                  </p>
-                </div>
-
-                <div className="py-4">
-                  <h3 className="font-semibold text-foreground mb-1">
-                    macOS Sequoia Support
-                  </h3>
-                  <p className="text-xs text-foreground/50 flex items-center gap-1">
-                    <RocketIcon className="w-3 h-3" /> Announcement
-                  </p>
-                </div>
-
-                <div className="py-4">
-                  <h3 className="font-semibold text-foreground mb-1">
-                    Cuyor can now connect to your apps
+                    Cuyor v0.1.3: Smart clicking & Full-screen context
                   </h3>
                   <p className="text-xs text-foreground/50 flex items-center gap-1">
                     <CodeIcon className="w-3 h-3" /> Product
@@ -449,7 +431,7 @@ export default function Home() {
 
                 <div className="py-4">
                   <h3 className="font-semibold text-foreground mb-1">
-                    Code assistance module
+                    Cuyor v0.1.2: Beta feedback improvements
                   </h3>
                   <p className="text-xs text-foreground/50 flex items-center gap-1">
                     <CodeIcon className="w-3 h-3" /> Product
@@ -458,10 +440,10 @@ export default function Home() {
 
                 <div className="py-4">
                   <h3 className="font-semibold text-foreground mb-1">
-                    Cuyor takes navigation to new places
+                    Cuyor v0.1.1: Private Beta Launch
                   </h3>
                   <p className="text-xs text-foreground/50 flex items-center gap-1">
-                    <ReaderIcon className="w-3 h-3" /> Research
+                    <RocketIcon className="w-3 h-3" /> Announcement
                   </p>
                 </div>
               </div>
