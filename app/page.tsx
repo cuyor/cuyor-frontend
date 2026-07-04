@@ -27,6 +27,32 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  const updates = [
+    {
+      title: "Cuyor v0.1.4: Introducing App Recipes",
+      subtitle: "Announcement",
+      icon: <RocketIcon className="w-3 h-3" />,
+    },
+
+    {
+      title: "Cuyor v0.1.3: Smart clicking & Full-screen context",
+      subtitle: "Product",
+      icon: <CodeIcon className="w-3 h-3" />,
+    },
+
+    {
+      title: "Cuyor v0.1.2: Beta feedback improvements",
+      subtitle: "Product",
+      icon: <CodeIcon className="w-3 h-3" />,
+    },
+
+    {
+      title: "Cuyor v0.1.1: Private Beta Launch",
+      subtitle: "Announcement",
+      icon: <RocketIcon className="w-3 h-3" />,
+    },
+  ];
+
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (email) {
@@ -420,32 +446,16 @@ export default function Home() {
               </div>
 
               <div className="flex-1 space-y-6">
-                <div className="py-4">
-                  <h3 className="font-semibold text-foreground mb-1">
-                    Cuyor v0.1.3: Smart clicking & Full-screen context
-                  </h3>
-                  <p className="text-xs text-foreground/50 flex items-center gap-1">
-                    <CodeIcon className="w-3 h-3" /> Product
-                  </p>
-                </div>
-
-                <div className="py-4">
-                  <h3 className="font-semibold text-foreground mb-1">
-                    Cuyor v0.1.2: Beta feedback improvements
-                  </h3>
-                  <p className="text-xs text-foreground/50 flex items-center gap-1">
-                    <CodeIcon className="w-3 h-3" /> Product
-                  </p>
-                </div>
-
-                <div className="py-4">
-                  <h3 className="font-semibold text-foreground mb-1">
-                    Cuyor v0.1.1: Private Beta Launch
-                  </h3>
-                  <p className="text-xs text-foreground/50 flex items-center gap-1">
-                    <RocketIcon className="w-3 h-3" /> Announcement
-                  </p>
-                </div>
+                {updates.map((update, index) => (
+                  <div className="py-4" key={index}>
+                    <h3 className="font-semibold text-foreground mb-1">
+                      {update.title}
+                    </h3>
+                    <p className="text-xs text-foreground/50 flex items-center gap-1">
+                      {update.icon} {update.subtitle}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
