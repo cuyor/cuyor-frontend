@@ -9,9 +9,6 @@ import {
   ReaderIcon,
   CodeIcon,
   ChevronRightIcon,
-  TwitterLogoIcon,
-  GitHubLogoIcon,
-  LinkedInLogoIcon,
 } from "@radix-ui/react-icons";
 
 import CuyorIcon from "@/components/ui/cuyor-icon";
@@ -20,7 +17,69 @@ import { WordRotate } from "@/components/ui/word-rotate";
 import WindowAnimation from "@/components/ui/window-animation";
 import CuyorToolbar from "@/components/ui/cuyor-toolbar";
 import { Kbd } from "@/components/ui/kbd";
-import { MousePointer2, ScanEye } from "lucide-react";
+import {
+  MousePointer2,
+  ScanEye,
+  LinkedinIcon,
+  YoutubeIcon,
+  InstagramIcon,
+} from "lucide-react";
+import { PLANS, PLAN_ORDER, CHECKOUT_ENABLED, type PlanId } from "@/lib/plans";
+
+// Shared CTA shell: filled, high-contrast, never "disabled"-looking.
+const ctaBase =
+  "inline-flex shrink-0 items-center justify-center gap-1 px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors";
+// Standard (hero) uses the terracotta accent so it stays the visual priority;
+// Basic/Max use a solid dark fill.
+const ctaFilledAccent = "bg-primary text-white hover:bg-primary/90";
+const ctaFilledDark = "bg-foreground text-background hover:bg-foreground/90";
+
+// Per-tier card treatment. Basic is quietest, Standard is the accented hero
+// (tinted bg + primary ring), Max a restrained neutral step-up.
+const cardVariants: Record<PlanId, string> = {
+  basic: "border-[--border-secondary] hover:border-foreground/20",
+  standard:
+    "border-primary/50 bg-primary/[0.04] ring-1 ring-primary/20 shadow-sm",
+  max: "border-[--border-secondary] hover:border-primary/30",
+};
+
+function PlanCta({ planId }: { planId: PlanId }) {
+  const plan = PLANS[planId];
+
+  // Basic keeps its Download → /dashboard link exactly as before (now filled).
+  if (planId === "basic") {
+    return (
+      <Link href="/dashboard" className={`${ctaBase} ${ctaFilledDark}`}>
+        Download <ChevronRightIcon className="w-4 h-4" />
+      </Link>
+    );
+  }
+
+  const fill = planId === "standard" ? ctaFilledAccent : ctaFilledDark;
+
+  // Paid plans: live checkout only when the flag is on AND a checkoutUrl exists.
+  if (CHECKOUT_ENABLED && plan.checkoutUrl) {
+    return (
+      <a href={plan.checkoutUrl} className={`${ctaBase} ${fill}`}>
+        Get {plan.name} <ChevronRightIcon className="w-4 h-4" />
+      </a>
+    );
+  }
+
+  // Dormant (under review): styled like the real CTA but inert — no navigation,
+  // no Lemon Squeezy call. Flipping the flag + adding checkoutUrl activates it.
+  return (
+    <button
+      type="button"
+      disabled
+      aria-disabled="true"
+      title="Available soon"
+      className={`${ctaBase} ${fill} opacity-60 cursor-not-allowed`}
+    >
+      Get {plan.name} <ChevronRightIcon className="w-4 h-4" />
+    </button>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
@@ -90,16 +149,10 @@ export default function Home() {
               Pricing
             </a>
             <a
-              href="#how"
+              href="#releases"
               className="text-foreground/70 hover:text-foreground transition-colors"
             >
-              How it Works
-            </a>
-            <a
-              href="#resources"
-              className="text-foreground/70 hover:text-foreground transition-colors"
-            >
-              Resources
+              Releases
             </a>
           </nav>
           <div className="flex items-center gap-4">
@@ -351,82 +404,73 @@ export default function Home() {
             </div>
 
             <div className="space-y-4 max-w-3xl mx-auto">
-              {/* Basic Plan */}
-              <div className="p-6 rounded-xl bg-white border border-[--border-secondary] hover:border-primary/30 transition-colors flex items-center justify-between">
-                <div className="flex-1">
-                  <h3 className="text-2xl font-semibold mb-2 text-foreground">
-                    Basic
-                  </h3>
-                  <p className="text-foreground/60 text-sm mb-3">
-                    Free forever for personal use
-                  </p>
-                  <div className="flex gap-2 text-xs text-foreground/50">
-                    <span>Local processing</span>
-                    <span>•</span>
-                    <span>Basic guidance</span>
-                    <span>•</span>
-                    <span>All macOS apps</span>
-                  </div>
-                </div>
-                <Link
-                  href="/dashboard"
-                  className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors"
-                >
-                  Download <ChevronRightIcon className="w-4 h-4" />
-                </Link>
-              </div>
+              {PLAN_ORDER.map((planId) => {
+                const plan = PLANS[planId];
+                const isHero = planId === "standard";
+                return (
+                  <div
+                    key={planId}
+                    className={`relative flex items-center justify-between gap-6 p-6 rounded-xl bg-white border transition-colors ${cardVariants[planId]}`}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <h3 className="text-2xl font-semibold text-foreground">
+                          {plan.name}
+                        </h3>
+                        {plan.createMode && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary text-white shadow-sm">
+                            <RocketIcon className="w-3 h-3" />
+                            Create Mode
+                          </span>
+                        )}
+                        {isHero && (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold text-primary border border-primary/40">
+                            Most popular
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-foreground/60 text-sm mb-3">
+                        {plan.blurb}
+                      </p>
+                      <div className="flex flex-wrap gap-2 text-xs text-foreground/50">
+                        {plan.chips.map((chip, i) => (
+                          <span key={chip} className="flex gap-2">
+                            {i > 0 && <span aria-hidden>•</span>}
+                            <span>{chip}</span>
+                          </span>
+                        ))}
+                      </div>
+                      {plan.usage && (
+                        <p className="mt-3 text-xs text-foreground/60">
+                          {plan.usage}
+                        </p>
+                      )}
+                    </div>
 
-              {/* Standard Plan */}
-              <div className="p-6 rounded-xl bg-white border border-[--border-secondary] hover:border-primary/30 transition-colors flex items-center justify-between">
-                <div className="flex-1">
-                  <h3 className="text-2xl font-semibold mb-2 text-foreground">
-                    Standard
-                  </h3>
-                  <p className="text-foreground/60 text-sm mb-3">
-                    Powerful and versatile, designed for the work you do every
-                    day
-                  </p>
-                  <div className="flex gap-2 text-xs text-foreground/50">
-                    <span>Advanced vision</span>
-                    <span>•</span>
-                    <span>Priority support</span>
-                    <span>•</span>
-                    <span>Code assistance</span>
+                    {/* Price + CTA */}
+                    <div className="flex flex-col items-end gap-3 shrink-0">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold tracking-tight text-foreground">
+                          {plan.priceLabel}
+                        </span>
+                        {plan.cadence && (
+                          <span className="text-sm text-foreground/50">
+                            /{plan.cadence}
+                          </span>
+                        )}
+                      </div>
+                      <PlanCta planId={planId} />
+                    </div>
                   </div>
-                </div>
-                <button className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors">
-                  Details <ChevronRightIcon className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Max Plan */}
-              <div className="p-6 rounded-xl bg-white border border-[--border-secondary] hover:border-primary/30 transition-colors flex items-center justify-between">
-                <div className="flex-1">
-                  <h3 className="text-2xl font-semibold mb-2 text-foreground">
-                    Max
-                  </h3>
-                  <p className="text-foreground/60 text-sm mb-3">
-                    Enterprise model for teams and professionals
-                  </p>
-                  <div className="flex gap-2 text-xs text-foreground/50">
-                    <span>Team features</span>
-                    <span>•</span>
-                    <span>Enterprise support</span>
-                    <span>•</span>
-                    <span>Custom training</span>
-                  </div>
-                </div>
-                <button className="flex items-center gap-1 px-4 py-2 border border-[--border-secondary] rounded-md text-sm text-foreground hover:border-foreground/30 transition-colors">
-                  Details <ChevronRightIcon className="w-4 h-4" />
-                </button>
-              </div>
+                );
+              })}
             </div>
           </div>
         </section>
 
         {/* Updates Section */}
         <section
-          id="resources"
+          id="releases"
           className="px-8 py-24 border-t border-[--border-secondary]"
         >
           <div className="max-w-7xl mx-auto">
@@ -629,9 +673,30 @@ export default function Home() {
               © {new Date().getFullYear()} Cuyor. All rights reserved.
             </p>
             <div className="flex items-center gap-4">
-              <TwitterLogoIcon className="w-4 h-4 text-white/40 hover:text-white cursor-pointer transition-colors" />
-              <GitHubLogoIcon className="w-4 h-4 text-white/40 hover:text-white cursor-pointer transition-colors" />
-              <LinkedInLogoIcon className="w-4 h-4 text-white/40 hover:text-white cursor-pointer transition-colors" />
+              <a
+                href="https://www.linkedin.com/company/cuyor/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Cuyor on LinkedIn"
+              >
+                <LinkedinIcon className="w-4 h-4 text-white/40 hover:text-white cursor-pointer transition-colors" />
+              </a>
+              <a
+                href="https://www.youtube.com/@cuyorapp"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Cuyor on YouTube"
+              >
+                <YoutubeIcon className="w-4 h-4 text-white/40 hover:text-white cursor-pointer transition-colors" />
+              </a>
+              <a
+                href="https://www.instagram.com/cuyorapp"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Cuyor on Instagram"
+              >
+                <InstagramIcon className="w-4 h-4 text-white/40 hover:text-white cursor-pointer transition-colors" />
+              </a>
             </div>
           </div>
         </div>
