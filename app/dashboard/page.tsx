@@ -22,6 +22,7 @@ import {
   type UsagePool,
   extractUrl,
   formatDate,
+  isAwaitingPayment,
   isPaidPlan,
 } from "@/lib/entitlement";
 
@@ -111,7 +112,8 @@ export default function DashboardPage() {
   useEffect(() => {
     const licenseKey = auth?.license_key;
     const st = entitlement?.entitlement_status ?? auth?.entitlement_status;
-    if (!licenseKey || !st || st === "pending_activation") return;
+    const pl = (entitlement?.plan ?? auth?.plan) as PlanId | undefined;
+    if (!licenseKey || !st || isAwaitingPayment(st, pl)) return;
 
     let cancelled = false;
     (async () => {
@@ -274,6 +276,8 @@ export default function DashboardPage() {
   const email = auth?.email;
   const licenseKey = auth?.license_key;
   const planName = plan ? PLANS[plan].name : "—";
+  // Basic is free — it is never "awaiting payment", whatever the backend says.
+  const awaitingPayment = isAwaitingPayment(status, plan);
 
   return (
     <div className="min-h-screen bg-background">
@@ -340,12 +344,12 @@ export default function DashboardPage() {
             expiresAt={auth?.expires_at}
             copied={copied}
             onCopy={copyLicenseKey}
-            inactive={status === "pending_activation"}
+            inactive={awaitingPayment}
           />
         )}
 
-        {/* Download — hidden while pending_activation (nothing to activate yet). */}
-        {status !== "pending_activation" && (
+        {/* Download — hidden while awaiting payment (nothing to activate yet). */}
+        {!awaitingPayment && (
           <DownloadCard
             downloading={downloading}
             downloadError={downloadError}
@@ -478,7 +482,9 @@ function StatusView({
   if (!status) return null;
 
   // pending_activation — paid plan not yet paid. The license does NOT work yet.
-  if (status === "pending_activation") {
+  // Basic is free and has no checkout, so it falls through to the normal card
+  // even if the backend reports pending_activation for it.
+  if (isAwaitingPayment(status, plan)) {
     return (
       <section className="mb-8 p-6 rounded-xl border border-primary/40 bg-primary/[0.04]">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-3 rounded-full text-xs font-semibold bg-primary text-white">

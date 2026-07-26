@@ -32,6 +32,16 @@ export const isPaidPlan = (plan: PlanId | undefined): boolean =>
   plan === "standard" || plan === "max";
 
 /**
+ * Basic is free and has no checkout (POST /checkout only accepts "standard" and
+ * "max"), so a `pending_activation` status on Basic is not something the user
+ * can act on — only paid plans can genuinely be awaiting payment.
+ */
+export const isAwaitingPayment = (
+  status: EntitlementStatus | string | undefined,
+  plan: PlanId | undefined,
+): boolean => status === "pending_activation" && isPaidPlan(plan);
+
+/**
  * A single metered credit pool, as exposed to the browser. The raw
  * remaining/limit counts never leave the Next server — only the derived
  * percentage does (see /api/me/usage).
