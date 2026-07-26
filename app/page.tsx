@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -24,7 +24,16 @@ import {
   YoutubeIcon,
   InstagramIcon,
 } from "lucide-react";
-import { PLANS, PLAN_ORDER, CHECKOUT_ENABLED, type PlanId } from "@/lib/plans";
+import { PLANS, PLAN_ORDER, type PlanId } from "@/lib/plans";
+
+// Reads whether the user is logged in from localStorage via useSyncExternalStore
+// (idiomatic external-store read: no hydration mismatch, reflects cross-tab changes).
+function subscribeAuthStorage(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+const getAuthSnapshot = () => localStorage.getItem("cuyor_auth") !== null;
+const getAuthServerSnapshot = () => false;
 
 // Shared CTA shell: filled, high-contrast, never "disabled"-looking.
 const ctaBase =
@@ -57,34 +66,24 @@ function PlanCta({ planId }: { planId: PlanId }) {
 
   const fill = planId === "standard" ? ctaFilledAccent : ctaFilledDark;
 
-  // Paid plans: live checkout only when the flag is on AND a checkoutUrl exists.
-  if (CHECKOUT_ENABLED && plan.checkoutUrl) {
-    return (
-      <a href={plan.checkoutUrl} className={`${ctaBase} ${fill}`}>
-        Get {plan.name} <ChevronRightIcon className="w-4 h-4" />
-      </a>
-    );
-  }
-
-  // Dormant (under review): styled like the real CTA but inert — no navigation,
-  // no Lemon Squeezy call. Flipping the flag + adding checkoutUrl activates it.
+  // Paid plans route into the sign-up funnel with the plan preselected; the actual
+  // Lemon Squeezy checkout (POST /api/checkout) happens on the dashboard once the
+  // user has a session. While dormant, that call returns a synthetic URL (no charge).
   return (
-    <button
-      type="button"
-      disabled
-      aria-disabled="true"
-      title="Available soon"
-      className={`${ctaBase} ${fill} opacity-60 cursor-not-allowed`}
-    >
+    <Link href={`/register?plan=${planId}`} className={`${ctaBase} ${fill}`}>
       Get {plan.name} <ChevronRightIcon className="w-4 h-4" />
-    </button>
+    </Link>
   );
 }
 
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const isLoggedIn = useSyncExternalStore(
+    subscribeAuthStorage,
+    getAuthSnapshot,
+    getAuthServerSnapshot,
+  );
 
   const updates = [
     {
@@ -118,13 +117,6 @@ export default function Home() {
       router.push(`/register?email=${encodeURIComponent(email)}`);
     }
   };
-
-  useEffect(() => {
-    const stored = localStorage.getItem("cuyor_auth");
-    if (stored) {
-      setIsLoggedIn(true);
-    }
-  }, []);
 
   return (
     <div className="min-h-screen bg-background relative">

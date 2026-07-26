@@ -11,12 +11,13 @@ import {
   Cross2Icon,
 } from "@radix-ui/react-icons";
 import CuyorIcon from "@/components/ui/cuyor-icon";
+import { PLANS, PLAN_ORDER, type PlanId } from "@/lib/plans";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [plan, setPlan] = useState<"basic" | "standard" | "max">("basic");
+  const [plan, setPlan] = useState<PlanId>("basic");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -30,7 +31,7 @@ export default function RegisterPage() {
     }
     const planParam = params.get("plan");
     if (planParam && ["basic", "standard", "max"].includes(planParam)) {
-      setPlan(planParam as "basic" | "standard" | "max");
+      setPlan(planParam as PlanId);
     }
   }, []);
 
@@ -213,32 +214,36 @@ export default function RegisterPage() {
               )}
             </div>
 
-            {/* Plan selection */}
+            {/* Plan selection — sourced from lib/plans.ts */}
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">
                 Select a plan
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {(["basic", "standard", "max"] as const).map((p) => (
+                {PLAN_ORDER.map((p) => (
                   <button
                     key={p}
                     type="button"
-                    onClick={() => p !== "basic" ? setPlan(p) : ''}
-                    className={`px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                    onClick={() => setPlan(p)}
+                    className={`flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
                       plan === p
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-[--border-secondary] bg-white text-foreground/70 hover:border-primary/50"
                     }`}
-                    disabled={p !== "basic"}
                   >
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                    <span>{PLANS[p].name}</span>
+                    <span className="text-xs font-normal opacity-70">
+                      {PLANS[p].priceLabel}
+                      {PLANS[p].cadence ? `/${PLANS[p].cadence}` : ""}
+                    </span>
                   </button>
                 ))}
               </div>
               <p className="mt-2 text-xs text-foreground/50">
-                {plan === "basic" && "Free forever for personal use"}
-                {plan === "standard" && "$9/month - Advanced vision & support"}
-                {plan === "max" && "$29/month - Enterprise features for teams"}
+                {plan === "basic" &&
+                  "Free forever for personal use — activate instantly."}
+                {plan !== "basic" &&
+                  "You'll complete payment to activate after signing up."}
               </p>
             </div>
 

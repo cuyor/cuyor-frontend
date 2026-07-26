@@ -38,8 +38,11 @@ export default function CuyorToolbar() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rafRef = useRef<number>(0);
   const hasMoved = useRef(false);
-  const isMounted = useRef(false);
   const isTypingRef = useRef(false);
+
+  // Whether the user has toggled the field at least once. Drives which transition
+  // to use, so it must be state (read during render), not a ref.
+  const [hasToggled, setHasToggled] = useState(false);
 
   const [visible, setVisible] = useState(false);
   const [fieldOpen, setFieldOpen] = useState(false);
@@ -87,7 +90,7 @@ export default function CuyorToolbar() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey) {
         e.preventDefault();
-        isMounted.current = true;
+        setHasToggled(true);
         setFieldOpen((prev) => !prev);
         setShowTip(false);
       }
@@ -130,7 +133,7 @@ export default function CuyorToolbar() {
   );
 
   const toggleField = useCallback(() => {
-    isMounted.current = true;
+    setHasToggled(true);
     setFieldOpen((prev) => !prev);
     setShowTip(false);
     isTypingRef.current = false;
@@ -146,9 +149,7 @@ export default function CuyorToolbar() {
     setFieldOpen(false);
   }, [inputValue]);
 
-  const fieldTransition = isMounted.current
-    ? TRANSITION.toggle
-    : TRANSITION.field;
+  const fieldTransition = hasToggled ? TRANSITION.toggle : TRANSITION.field;
 
   return (
     <div

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+import { BACKEND_URL, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +22,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(data);
+    // Keep the session token server-side only: store it in an httpOnly cookie
+    // and never hand it back to client JS.
+    const { session_token, ...safe } = data;
+    const res = NextResponse.json(safe);
+    if (session_token) {
+      res.cookies.set(SESSION_COOKIE, session_token, sessionCookieOptions);
+    }
+    return res;
   } catch (error) {
     console.error("Login API error:", error);
     return NextResponse.json(
