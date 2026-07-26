@@ -10,11 +10,29 @@ export type EntitlementStatus =
   | "expired"
   | "comp";
 
-/** GET /api/v1/me/entitlement */
+/**
+ * GET /api/v1/me/entitlement — also the response shape of POST /billing/cancel
+ * and POST /billing/change-plan, which return the reconciled entitlement.
+ *
+ * The cancel-at-period-end flag isn't in the documented shape; the status stays
+ * `active` until `expires_at`. We read a few plausible field names so that if
+ * the backend does send one, it beats our locally remembered flag.
+ */
 export interface EntitlementResponse {
   plan: PlanId;
   entitlement_status: EntitlementStatus;
   expires_at: string;
+  cancel_at_period_end?: boolean;
+  cancelled?: boolean;
+  canceled?: boolean;
+}
+
+/** True when the backend explicitly says the subscription won't renew. */
+export function isCancelledAtPeriodEnd(
+  ent: EntitlementResponse | null | undefined,
+): boolean {
+  if (!ent) return false;
+  return Boolean(ent.cancel_at_period_end ?? ent.cancelled ?? ent.canceled);
 }
 
 /** POST /auth/register|login (AuthWithLicenseResponse), minus session_token. */
@@ -40,6 +58,78 @@ export const isAwaitingPayment = (
   status: EntitlementStatus | string | undefined,
   plan: PlanId | undefined,
 ): boolean => status === "pending_activation" && isPaidPlan(plan);
+
+/**
+ * The user has a Lemon Squeezy subscription behind them, so the LS-hosted
+ * customer portal (payment method + invoices) is meaningful. `comp` is included
+ * because complimentary accounts may still have billing history.
+ */
+export const hasSubscription = (
+  status: EntitlementStatus | string | undefined,
+  plan: PlanId | undefined,
+): boolean =>
+  isPaidPlan(plan) &&
+  (status === "active" || status === "past_due" || status === "comp");
+
+/**
+ * The subscription can be cancelled or switched in-app. `comp` is excluded —
+ * complimentary access has no subscription to manage.
+ */
+export const isManageable = (
+  status: EntitlementStatus | string | undefined,
+  plan: PlanId | undefined,
+): boolean =>
+  isPaidPlan(plan) && (status === "active" || status === "past_due");
+
+/** How the UI should react to a failed billing-management call. */
+export type BillingErrorKind =
+  | "session_expired" // 401 — re-login
+  | "plan_changes_disabled" // 403, server-side feature flag off
+  | "no_subscription" // 403 inactive / 404 / 409 — offer Upgrade instead
+  | "upstream" // 502 — Lemon Squeezy call failed, safe to retry
+  | "unknown";
+
+export interface BillingError {
+  kind: BillingErrorKind;
+  message: string;
+}
+
+/**
+ * Map a billing endpoint failure onto the reaction the UI owes the user.
+ * Detail strings are matched loosely — status code is the primary signal.
+ */
+export function classifyBillingError(
+  status: number,
+  detail?: unknown,
+): BillingError {
+  const text = typeof detail === "string" ? detail : "";
+
+  if (status === 401) {
+    return {
+      kind: "session_expired",
+      message: "Your session expired. Please sign in again.",
+    };
+  }
+  if (status === 403 && /plan change/i.test(text)) {
+    return {
+      kind: "plan_changes_disabled",
+      message: "Plan changes are temporarily unavailable.",
+    };
+  }
+  if (status === 403 || status === 404 || status === 409) {
+    return {
+      kind: "no_subscription",
+      message: text || "You don't have a subscription to manage.",
+    };
+  }
+  if (status === 502) {
+    return {
+      kind: "upstream",
+      message: "Our payment provider didn't respond. Please try again.",
+    };
+  }
+  return { kind: "unknown", message: text || "Something went wrong." };
+}
 
 /**
  * A single metered credit pool, as exposed to the browser. The raw

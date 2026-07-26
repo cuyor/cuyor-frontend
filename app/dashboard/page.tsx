@@ -13,6 +13,7 @@ import {
   ExclamationTriangleIcon,
   RocketIcon,
 } from "@radix-ui/react-icons";
+import { toast } from "sonner";
 import CuyorIcon from "@/components/ui/cuyor-icon";
 import { PLANS, CHECKOUT_ENABLED, type PlanId } from "@/lib/plans";
 import {
@@ -20,9 +21,13 @@ import {
   type StoredAuth,
   type UsageSummary,
   type UsagePool,
+  classifyBillingError,
   extractUrl,
   formatDate,
+  hasSubscription,
   isAwaitingPayment,
+  isCancelledAtPeriodEnd,
+  isManageable,
   isPaidPlan,
 } from "@/lib/entitlement";
 
@@ -31,6 +36,35 @@ const WEB_HEADERS = { "x-cuyor-client": "webapp" };
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_ATTEMPTS = 10; // ~30s total
+
+const AUTH_KEY = "cuyor_auth";
+/**
+ * Cancelling leaves `entitlement_status` on `active` until `expires_at`, and the
+ * documented entitlement shape carries no "won't renew" flag. We remember the
+ * period end we were told about so the banner survives a reload; the backend
+ * wins whenever it does send a cancellation flag, and the value is dropped once
+ * that date passes or the user re-subscribes.
+ */
+const CANCEL_FLAG_KEY = "cuyor_cancel_pending";
+
+type BillingAction = null | "checkout" | "portal" | "cancel" | "change";
+
+type ConfirmIntent =
+  | { kind: "cancel"; expiresAt: string | undefined }
+  | { kind: "change"; plan: PlanId; current: PlanId }
+  | null;
+
+/** Reads the remembered period end, discarding it once it's in the past. */
+function readCancelFlag(): string | null {
+  const value = localStorage.getItem(CANCEL_FLAG_KEY);
+  if (!value) return null;
+  const end = new Date(value).getTime();
+  if (Number.isNaN(end) || end < Date.now()) {
+    localStorage.removeItem(CANCEL_FLAG_KEY);
+    return null;
+  }
+  return value;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -46,10 +80,15 @@ export default function DashboardPage() {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
-  const [actionBusy, setActionBusy] = useState<null | "checkout" | "portal">(
-    null,
-  );
+  const [actionBusy, setActionBusy] = useState<BillingAction>(null);
   const [actionError, setActionError] = useState("");
+
+  // Set when /billing/change-plan reports the server-side switch is off (403).
+  const [planChangesDisabled, setPlanChangesDisabled] = useState(false);
+  // Pending confirmation modal — cancel and plan changes are never fire-and-forget.
+  const [confirming, setConfirming] = useState<ConfirmIntent>(null);
+  // Locally remembered "cancelled, runs until expires_at" (see CANCEL_FLAG_KEY).
+  const [cancelFlag, setCancelFlag] = useState<string | null>(null);
 
   // Post-checkout activation polling.
   const [activating, setActivating] = useState(false);
@@ -78,7 +117,7 @@ export default function DashboardPage() {
   useEffect(() => {
     // license_key + email come from the auth response persisted at login/register
     // (they are NOT returned by GET /me/entitlement — see flagged backend gap).
-    const stored = localStorage.getItem("cuyor_auth");
+    const stored = localStorage.getItem(AUTH_KEY);
     if (stored) {
       try {
         setAuth(JSON.parse(stored) as StoredAuth);
@@ -86,6 +125,7 @@ export default function DashboardPage() {
         /* ignore malformed cache */
       }
     }
+    setCancelFlag(readCancelFlag());
 
     fetchEntitlement()
       .catch((err) => setError(err.message))
@@ -174,6 +214,65 @@ export default function DashboardPage() {
 
   // ---- actions ------------------------------------------------------------
 
+  /**
+   * Adopt the entitlement a billing mutation returned — it is the reconciled
+   * truth, so it replaces (never merges into) local guesses, and is mirrored
+   * into the stored auth blob that acts as the offline fallback.
+   */
+  const applyEntitlement = useCallback((ent: EntitlementResponse) => {
+    setEntitlement(ent);
+    setAuth((prev) => {
+      if (!prev) return prev;
+      const next: StoredAuth = {
+        ...prev,
+        plan: ent.plan,
+        entitlement_status: ent.entitlement_status,
+        expires_at: ent.expires_at,
+      };
+      localStorage.setItem(AUTH_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  /**
+   * Translate a failed billing call into the reaction it deserves. Returns the
+   * classification so callers can skip their own error copy.
+   */
+  const handleBillingFailure = useCallback(
+    (status: number, detail: unknown, retry?: () => void) => {
+      const err = classifyBillingError(status, detail);
+      switch (err.kind) {
+        case "session_expired":
+          localStorage.removeItem(AUTH_KEY);
+          toast.error(err.message);
+          router.push("/login");
+          break;
+        case "plan_changes_disabled":
+          // Feature-flagged off server-side — stop offering the control.
+          setPlanChangesDisabled(true);
+          toast.error(err.message);
+          break;
+        case "no_subscription":
+          // Our view of the plan is stale; re-read it so the UI falls back to
+          // offering Upgrade rather than management actions.
+          toast.error(err.message);
+          fetchEntitlement().catch(() => {
+            /* the card copy already covers this */
+          });
+          break;
+        case "upstream":
+          toast.error(err.message, {
+            action: retry ? { label: "Retry", onClick: retry } : undefined,
+          });
+          break;
+        default:
+          toast.error(err.message);
+      }
+      return err;
+    },
+    [fetchEntitlement, router],
+  );
+
   const startCheckout = useCallback(async (plan: PlanId) => {
     setActionError("");
     setActionBusy("checkout");
@@ -187,6 +286,8 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error(data.detail || "Could not start checkout");
       const url = extractUrl(data);
       if (!url) throw new Error("No checkout URL returned by the server");
+      // A new subscription supersedes any remembered cancellation.
+      localStorage.removeItem(CANCEL_FLAG_KEY);
       // Leave the SPA for Lemon Squeezy hosted checkout (or the synthetic URL).
       window.location.href = url;
     } catch (err) {
@@ -195,6 +296,14 @@ export default function DashboardPage() {
     }
   }, []);
 
+  /**
+   * Lemon Squeezy billing is passwordless: the backend mints a signed, short-lived
+   * portal URL that auto-authenticates the customer. Re-using a stale one is what
+   * lands people on the LS login / email-verification page — so this fetches a
+   * fresh URL on every click and redirects straight away. The URL must never be
+   * cached in state, storage, or a memo, and no store.*.lemonsqueezy.com link may
+   * be hardcoded anywhere in the app.
+   */
   const openBilling = useCallback(async () => {
     setActionError("");
     setActionBusy("portal");
@@ -204,7 +313,11 @@ export default function DashboardPage() {
         cache: "no-store",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Could not open billing");
+      if (!res.ok) {
+        handleBillingFailure(res.status, data?.detail, openBilling);
+        setActionBusy(null);
+        return;
+      }
       const url = extractUrl(data);
       if (!url) throw new Error("No portal URL returned by the server");
       window.location.href = url;
@@ -212,7 +325,79 @@ export default function DashboardPage() {
       setActionError(err instanceof Error ? err.message : "Billing failed");
       setActionBusy(null);
     }
-  }, []);
+  }, [handleBillingFailure]);
+
+  /** POST /billing/cancel — cancels at period end, access runs to expires_at. */
+  const cancelSubscription = useCallback(async () => {
+    setActionError("");
+    setActionBusy("cancel");
+    try {
+      const res = await fetch("/api/billing/cancel", {
+        method: "POST",
+        headers: WEB_HEADERS,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // 502 leaves local state untouched — the subscription may be unchanged.
+        handleBillingFailure(res.status, data?.detail, cancelSubscription);
+        return;
+      }
+      const ent = data as EntitlementResponse;
+      applyEntitlement(ent);
+      if (ent.expires_at) {
+        localStorage.setItem(CANCEL_FLAG_KEY, ent.expires_at);
+        setCancelFlag(ent.expires_at);
+      }
+      toast.success("Subscription cancelled.");
+    } catch {
+      toast.error("Could not cancel right now. Please try again.");
+    } finally {
+      setActionBusy(null);
+    }
+  }, [applyEntitlement, handleBillingFailure]);
+
+  /** POST /billing/change-plan — upgrade or downgrade without leaving the app. */
+  const changePlan = useCallback(
+    async (plan: PlanId) => {
+      setActionError("");
+      setActionBusy("change");
+      try {
+        const res = await fetch("/api/billing/change-plan", {
+          method: "POST",
+          headers: { ...WEB_HEADERS, "Content-Type": "application/json" },
+          body: JSON.stringify({ plan }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          handleBillingFailure(res.status, data?.detail, () => changePlan(plan));
+          return;
+        }
+        const ent = data as EntitlementResponse;
+        applyEntitlement(ent);
+        // Switching plans means the subscription renews again.
+        localStorage.removeItem(CANCEL_FLAG_KEY);
+        setCancelFlag(null);
+        toast.success(`You're now on ${PLANS[ent.plan].name}.`);
+      } catch {
+        toast.error("Could not change your plan right now. Please try again.");
+      } finally {
+        setActionBusy(null);
+      }
+    },
+    [applyEntitlement, handleBillingFailure],
+  );
+
+  /**
+   * Runs the confirmed intent. The modal stays up (busy) until the call settles
+   * so the user sees the result land rather than a UI that flipped early.
+   */
+  const runConfirmed = useCallback(async () => {
+    const intent = confirming;
+    if (!intent) return;
+    if (intent.kind === "cancel") await cancelSubscription();
+    else await changePlan(intent.plan);
+    setConfirming(null);
+  }, [confirming, cancelSubscription, changePlan]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -220,7 +405,8 @@ export default function DashboardPage() {
     } catch {
       /* best-effort */
     }
-    localStorage.removeItem("cuyor_auth");
+    localStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem(CANCEL_FLAG_KEY);
     router.push("/");
   }, [router]);
 
@@ -278,6 +464,13 @@ export default function DashboardPage() {
   const planName = plan ? PLANS[plan].name : "—";
   // Basic is free — it is never "awaiting payment", whatever the backend says.
   const awaitingPayment = isAwaitingPayment(status, plan);
+  // Cancelled but still running: the backend flag wins, our remembered period
+  // end covers the (current) case where it doesn't send one.
+  const cancelledUntil = isManageable(status, plan)
+    ? isCancelledAtPeriodEnd(entitlement)
+      ? (entitlement?.expires_at ?? cancelFlag)
+      : cancelFlag
+    : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -321,6 +514,11 @@ export default function DashboardPage() {
         {/* Activation polling banner (post-checkout return) */}
         {activating && <ActivatingCard onRefresh={manualRefresh} />}
 
+        {/* Cancelled-but-still-active notice (access runs to the period end) */}
+        {!activating && cancelledUntil && (
+          <CancelledBanner expiresAt={cancelledUntil} />
+        )}
+
         {/* Status-driven content (usage ring lives inside the plan card) */}
         {!activating && (
           <StatusView
@@ -330,8 +528,11 @@ export default function DashboardPage() {
             expiresAt={expiresAt}
             actionBusy={actionBusy}
             actionError={actionError}
+            planChangesDisabled={planChangesDisabled}
+            cancelled={Boolean(cancelledUntil)}
             onCheckout={startCheckout}
             onBilling={openBilling}
+            onConfirm={setConfirming}
             usage={usage}
           />
         )}
@@ -357,6 +558,14 @@ export default function DashboardPage() {
           />
         )}
       </main>
+
+      {/* Cancel / plan change are always confirmed before the call goes out. */}
+      <ConfirmDialog
+        intent={confirming}
+        busy={actionBusy === "cancel" || actionBusy === "change"}
+        onConfirm={() => void runConfirmed()}
+        onDismiss={() => setConfirming(null)}
+      />
     </div>
   );
 }
@@ -385,6 +594,121 @@ function ActivatingCard({ onRefresh }: { onRefresh: () => void }) {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Cancelling never downgrades immediately — the plan runs to the period end and
+ * the account drops to Basic after that. Say so plainly.
+ */
+function CancelledBanner({ expiresAt }: { expiresAt: string }) {
+  return (
+    <section className="mb-8 p-4 rounded-xl border border-amber-300 bg-amber-50 flex items-start gap-3">
+      <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+      <p className="text-sm text-foreground/70">
+        Your plan is cancelled and will end on{" "}
+        <strong>{formatDate(expiresAt)}</strong>. You&apos;ll move to Basic after
+        that — everything keeps working until then.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Blocking confirmation for the two destructive-ish billing actions. Deliberately
+ * modal: neither cancel nor a (possibly prorated) plan change should be one click
+ * away, and neither is applied optimistically.
+ */
+function ConfirmDialog({
+  intent,
+  busy,
+  onConfirm,
+  onDismiss,
+}: {
+  intent: ConfirmIntent;
+  busy: boolean;
+  onConfirm: () => void;
+  onDismiss: () => void;
+}) {
+  // Escape closes, but not mid-flight — the call is already on its way.
+  useEffect(() => {
+    if (!intent) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onDismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [intent, busy, onDismiss]);
+
+  if (!intent) return null;
+
+  const isCancel = intent.kind === "cancel";
+  const upgrading = intent.kind === "change" && intent.plan === "max";
+
+  const title = isCancel
+    ? "Cancel your subscription?"
+    : `Switch to ${PLANS[intent.plan].name}?`;
+
+  const body = isCancel ? (
+    <>
+      You&apos;ll keep full access until{" "}
+      <strong>{formatDate(intent.expiresAt)}</strong>, then move to the free
+      Basic plan. No further charges.
+    </>
+  ) : upgrading ? (
+    <>
+      Upgrading to Max may charge a prorated amount now, and{" "}
+      {PLANS.max.priceLabel}/month from your next renewal.
+    </>
+  ) : (
+    <>
+      You&apos;ll move down to Standard at {PLANS.standard.priceLabel}/month.
+      Your billing is adjusted for the time already paid.
+    </>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-[2px]"
+      onClick={() => !busy && onDismiss()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md p-6 rounded-xl border border-[--border-secondary] bg-white shadow-lg"
+      >
+        <h2
+          id="confirm-title"
+          className="text-lg font-semibold text-foreground mb-2"
+        >
+          {title}
+        </h2>
+        <p className="text-sm text-foreground/70 mb-6">{body}</p>
+        <div className="flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={onDismiss}
+            disabled={busy}
+            className="px-5 py-2.5 rounded-lg border border-[--border-secondary] text-sm font-medium text-foreground/70 hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-60"
+          >
+            {isCancel ? "Keep my plan" : "Never mind"}
+          </button>
+          <PrimaryButton
+            variant={isCancel ? "dark" : "accent"}
+            onClick={onConfirm}
+            busy={busy}
+          >
+            {busy
+              ? "Working…"
+              : isCancel
+                ? "Cancel subscription"
+                : `Switch to ${PLANS[intent.plan].name}`}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -457,18 +781,24 @@ function StatusView({
   expiresAt,
   actionBusy,
   actionError,
+  planChangesDisabled,
+  cancelled,
   onCheckout,
   onBilling,
+  onConfirm,
   usage,
 }: {
   status: string | undefined;
   plan: PlanId | undefined;
   planName: string;
   expiresAt: string | undefined;
-  actionBusy: null | "checkout" | "portal";
+  actionBusy: BillingAction;
   actionError: string;
+  planChangesDisabled: boolean;
+  cancelled: boolean;
   onCheckout: (plan: PlanId) => void;
   onBilling: () => void;
+  onConfirm: (intent: ConfirmIntent) => void;
   usage: UsageSummary | null;
 }) {
   const busy = actionBusy !== null;
@@ -528,7 +858,7 @@ function StatusView({
           </div>
         </div>
         <PrimaryButton variant="dark" onClick={onBilling} busy={busy}>
-          Manage billing <ChevronRightIcon className="w-4 h-4" />
+          Update payment method <ChevronRightIcon className="w-4 h-4" />
         </PrimaryButton>
         {err}
       </section>
@@ -560,6 +890,11 @@ function StatusView({
   // active / comp — the good states.
   const isComp = status === "comp";
   const paid = isPaidPlan(plan);
+  const manageable = isManageable(status, plan);
+  const canOpenPortal = hasSubscription(status, plan);
+  // One-tap switch to the other paid tier (Max up, Standard down).
+  const switchTarget: PlanId | null =
+    plan === "standard" ? "max" : plan === "max" ? "standard" : null;
 
   return (
     <section className="mb-8 p-6 rounded-xl border border-[--border-secondary] bg-white">
@@ -570,15 +905,30 @@ function StatusView({
             <h2 className="text-lg font-semibold text-foreground">
               Your plan: {planName}
             </h2>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                cancelled
+                  ? "bg-amber-100 text-amber-700 border-amber-200"
+                  : "bg-emerald-100 text-emerald-700 border-emerald-200"
+              }`}
+            >
               <CheckIcon className="w-3.5 h-3.5" />{" "}
-              {isComp ? "Complimentary" : "Active"}
+              {cancelled ? "Cancelled" : isComp ? "Complimentary" : "Active"}
             </span>
           </div>
 
           {paid && !isComp && (
             <p className="text-sm text-foreground/60 mb-4">
-              Renews on <strong>{formatDate(expiresAt)}</strong>.
+              {cancelled ? (
+                <>
+                  Ends on <strong>{formatDate(expiresAt)}</strong> — no further
+                  charges.
+                </>
+              ) : (
+                <>
+                  Renews on <strong>{formatDate(expiresAt)}</strong>.
+                </>
+              )}
             </p>
           )}
           {isComp && (
@@ -588,30 +938,60 @@ function StatusView({
           )}
 
           <div className="flex flex-wrap gap-3">
-            {/* Basic: offer upgrades. Standard: offer Max. */}
-            {plan === "basic" && (
+            {/* No subscription yet (Basic, or comp with no paid tier): the only
+                route to a paid plan is checkout. */}
+            {!paid && (
               <UpgradeButtons
                 targets={["standard", "max"]}
                 onCheckout={onCheckout}
                 busy={busy}
               />
             )}
-            {plan === "standard" && (
-              <UpgradeButtons
-                targets={["max"]}
-                onCheckout={onCheckout}
+
+            {/* Paid + manageable: switch tiers in-app, no LS redirect. Hidden
+                when the backend has plan changes flagged off, or when the
+                subscription is already cancelled (nothing to switch). */}
+            {manageable && !planChangesDisabled && !cancelled && (
+              <PrimaryButton
+                variant={switchTarget === "max" ? "accent" : "dark"}
                 busy={busy}
-              />
+                onClick={() =>
+                  switchTarget &&
+                  plan &&
+                  onConfirm({
+                    kind: "change",
+                    plan: switchTarget,
+                    current: plan,
+                  })
+                }
+              >
+                {switchTarget === "max"
+                  ? `Upgrade to Max · ${PLANS.max.priceLabel}`
+                  : `Switch to Standard · ${PLANS.standard.priceLabel}`}
+                <ChevronRightIcon className="w-4 h-4" />
+              </PrimaryButton>
             )}
 
-            {/* Manage billing for paid subscriptions only (comp has none). */}
-            {paid && !isComp && (
+            {/* Payment method + invoices stay on Lemon Squeezy (PCI). The URL is
+                minted per click — see openBilling. */}
+            {canOpenPortal && (
               <PrimaryButton variant="dark" onClick={onBilling} busy={busy}>
-                Manage billing <ChevronRightIcon className="w-4 h-4" />
+                Update payment method <ChevronRightIcon className="w-4 h-4" />
               </PrimaryButton>
             )}
           </div>
-          {plan === "basic" && <TestModeNote />}
+
+          {manageable && !cancelled && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onConfirm({ kind: "cancel", expiresAt })}
+              className="mt-4 text-sm text-foreground/50 hover:text-red-600 underline underline-offset-4 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Cancel subscription
+            </button>
+          )}
+          {!paid && <TestModeNote />}
           {err}
         </div>
 
