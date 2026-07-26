@@ -60,20 +60,12 @@ export const isAwaitingPayment = (
 ): boolean => status === "pending_activation" && isPaidPlan(plan);
 
 /**
- * The user has a Lemon Squeezy subscription behind them, so the LS-hosted
- * customer portal (payment method + invoices) is meaningful. `comp` is included
- * because complimentary accounts may still have billing history.
- */
-export const hasSubscription = (
-  status: EntitlementStatus | string | undefined,
-  plan: PlanId | undefined,
-): boolean =>
-  isPaidPlan(plan) &&
-  (status === "active" || status === "past_due" || status === "comp");
-
-/**
  * The subscription can be cancelled or switched in-app. `comp` is excluded —
  * complimentary access has no subscription to manage.
+ *
+ * There is no customer-portal equivalent: card updates and receipts are handled
+ * by Lemon Squeezy's own emails, so every billing action we surface is
+ * first-party.
  */
 export const isManageable = (
   status: EntitlementStatus | string | undefined,
@@ -153,49 +145,19 @@ export interface UsageSummary {
 }
 
 /**
- * The /checkout and /billing/portal endpoints return an untyped `{}` body in the
- * OpenAPI spec (couldn't verify the live shape — backend registration is beta-gated).
- * Pull a URL out of whatever comes back, tolerating a few likely field names.
+ * /checkout returns an untyped `{}` body in the OpenAPI spec (the live shape is
+ * `{ checkout_url }`). Pull a URL out of whatever comes back, tolerating a few
+ * likely field names.
  */
 export function extractUrl(data: unknown): string | null {
   if (typeof data === "string") return data;
   if (data && typeof data === "object") {
-    for (const key of [
-      "url",
-      "checkout_url",
-      "portal_url",
-      "redirect_url",
-      "href",
-    ]) {
+    for (const key of ["url", "checkout_url", "redirect_url", "href"]) {
       const value = (data as Record<string, unknown>)[key];
       if (typeof value === "string" && value.length > 0) return value;
     }
   }
   return null;
-}
-
-/**
- * What kind of customer-portal URL the backend handed us.
- *
- * Lemon Squeezy billing is passwordless: a portal link only auto-authenticates
- * when it carries LS's `signature` (and `expires`) query params. A bare
- * `<store>.lemonsqueezy.com/billing` link has no signature, so LS falls back to
- * its "enter your email to continue" verification page — the symptom users
- * report as "it asks me to log in".
- *
- * `placeholder` is the backend's dormant fallback (cuyor.test), returned when it
- * has no LS API key or no `ls_customer_id` on file for the account.
- */
-export type PortalUrlKind = "signed" | "unsigned" | "placeholder";
-
-export function classifyPortalUrl(url: string): PortalUrlKind {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.endsWith("cuyor.test")) return "placeholder";
-    return parsed.searchParams.has("signature") ? "signed" : "unsigned";
-  } catch {
-    return "placeholder";
-  }
 }
 
 export function formatDate(iso: string | undefined): string {

@@ -22,10 +22,8 @@ import {
   type UsageSummary,
   type UsagePool,
   classifyBillingError,
-  classifyPortalUrl,
   extractUrl,
   formatDate,
-  hasSubscription,
   isAwaitingPayment,
   isCancelledAtPeriodEnd,
   isManageable,
@@ -48,7 +46,7 @@ const AUTH_KEY = "cuyor_auth";
  */
 const CANCEL_FLAG_KEY = "cuyor_cancel_pending";
 
-type BillingAction = null | "checkout" | "portal" | "cancel" | "change";
+type BillingAction = null | "checkout" | "cancel" | "change";
 
 type ConfirmIntent =
   | { kind: "cancel"; expiresAt: string | undefined }
@@ -297,57 +295,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  /**
-   * Lemon Squeezy billing is passwordless: the backend mints a signed, short-lived
-   * portal URL that auto-authenticates the customer. Re-using a stale one is what
-   * lands people on the LS login / email-verification page — so this fetches a
-   * fresh URL on every click and redirects straight away. The URL must never be
-   * cached in state, storage, or a memo, and no store.*.lemonsqueezy.com link may
-   * be hardcoded anywhere in the app.
-   */
-  const openBilling = useCallback(async () => {
-    setActionError("");
-    setActionBusy("portal");
-    try {
-      const res = await fetch("/api/billing/portal", {
-        headers: WEB_HEADERS,
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        handleBillingFailure(res.status, data?.detail, openBilling);
-        setActionBusy(null);
-        return;
-      }
-      const url = extractUrl(data);
-      if (!url) throw new Error("No portal URL returned by the server");
-
-      const kind = classifyPortalUrl(url);
-      if (kind === "placeholder") {
-        // Backend's dormant fallback — no LS API key, or no ls_customer_id on
-        // file for this account. Navigating would land on a dead domain.
-        setActionError(
-          "Billing isn't linked to this account yet. If you subscribed just now, give it a minute and try again.",
-        );
-        setActionBusy(null);
-        return;
-      }
-      if (kind === "unsigned") {
-        // Still navigate — it's the only URL we have — but say why LS is about
-        // to ask for an email instead of signing the user straight in.
-        console.warn(
-          "[billing] Portal URL has no LS signature; Lemon Squeezy will show its " +
-            "email-verification page. The backend returned an unsigned link " +
-            "(GET /api/v1/billing/portal → customer_portal).",
-        );
-      }
-      window.location.href = url;
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Billing failed");
-      setActionBusy(null);
-    }
-  }, [handleBillingFailure]);
-
   /** POST /billing/cancel — cancels at period end, access runs to expires_at. */
   const cancelSubscription = useCallback(async () => {
     setActionError("");
@@ -552,7 +499,6 @@ export default function DashboardPage() {
             planChangesDisabled={planChangesDisabled}
             cancelled={Boolean(cancelledUntil)}
             onCheckout={startCheckout}
-            onBilling={openBilling}
             onConfirm={setConfirming}
             usage={usage}
           />
@@ -805,7 +751,6 @@ function StatusView({
   planChangesDisabled,
   cancelled,
   onCheckout,
-  onBilling,
   onConfirm,
   usage,
 }: {
@@ -818,7 +763,6 @@ function StatusView({
   planChangesDisabled: boolean;
   cancelled: boolean;
   onCheckout: (plan: PlanId) => void;
-  onBilling: () => void;
   onConfirm: (intent: ConfirmIntent) => void;
   usage: UsageSummary | null;
 }) {
@@ -861,26 +805,26 @@ function StatusView({
     );
   }
 
-  // past_due — payment issue, access continues until expires_at.
+  // past_due — payment failed, access continues until expires_at. Card details
+  // live only with Lemon Squeezy, which emails the customer a secure update link
+  // on a failed charge; our webhooks reconcile the result. So this is purely
+  // informational — deliberately no button.
   if (status === "past_due") {
     return (
       <section className="mb-8 p-6 rounded-xl border border-amber-300 bg-amber-50">
-        <div className="flex items-start gap-3 mb-3">
-          <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 mt-0.5" />
+        <div className="flex items-start gap-3">
+          <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
           <div>
             <h2 className="font-semibold text-foreground mb-1">
-              There&apos;s a problem with your payment
+              Your last payment failed
             </h2>
             <p className="text-sm text-foreground/70">
-              Your {planName} access continues until{" "}
-              <strong>{formatDate(expiresAt)}</strong>. Update your payment
-              method to avoid losing access.
+              Check your email from Lemon Squeezy to update your card — the link
+              there is secure and specific to you. Your {planName} access
+              continues until <strong>{formatDate(expiresAt)}</strong>.
             </p>
           </div>
         </div>
-        <PrimaryButton variant="dark" onClick={onBilling} busy={busy}>
-          Update payment method <ChevronRightIcon className="w-4 h-4" />
-        </PrimaryButton>
         {err}
       </section>
     );
@@ -912,7 +856,6 @@ function StatusView({
   const isComp = status === "comp";
   const paid = isPaidPlan(plan);
   const manageable = isManageable(status, plan);
-  const canOpenPortal = hasSubscription(status, plan);
   // One-tap switch to the other paid tier (Max up, Standard down).
   const switchTarget: PlanId | null =
     plan === "standard" ? "max" : plan === "max" ? "standard" : null;
@@ -969,9 +912,9 @@ function StatusView({
               />
             )}
 
-            {/* Paid + manageable: switch tiers in-app, no LS redirect. Hidden
-                when the backend has plan changes flagged off, or when the
-                subscription is already cancelled (nothing to switch). */}
+            {/* Paid + manageable: switch tiers in-app. Hidden when the backend
+                has plan changes flagged off, or when the subscription is
+                already cancelled (nothing to switch). */}
             {manageable && !planChangesDisabled && !cancelled && (
               <PrimaryButton
                 variant={switchTarget === "max" ? "accent" : "dark"}
@@ -990,14 +933,6 @@ function StatusView({
                   ? `Upgrade to Max · ${PLANS.max.priceLabel}`
                   : `Switch to Standard · ${PLANS.standard.priceLabel}`}
                 <ChevronRightIcon className="w-4 h-4" />
-              </PrimaryButton>
-            )}
-
-            {/* Payment method + invoices stay on Lemon Squeezy (PCI). The URL is
-                minted per click — see openBilling. */}
-            {canOpenPortal && (
-              <PrimaryButton variant="dark" onClick={onBilling} busy={busy}>
-                Update payment method <ChevronRightIcon className="w-4 h-4" />
               </PrimaryButton>
             )}
           </div>
