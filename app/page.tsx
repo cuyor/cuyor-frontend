@@ -87,6 +87,12 @@ export default function Home() {
 
   const updates = [
     {
+      title: "Cuyor v0.1.5: Create Mode & in-app plan management",
+      subtitle: "Announcement",
+      icon: <RocketIcon className="w-3 h-3" />,
+    },
+
+    {
       title: "Cuyor v0.1.4: Introducing App Recipes",
       subtitle: "Announcement",
       icon: <RocketIcon className="w-3 h-3" />,
