@@ -22,6 +22,7 @@ import {
   type UsageSummary,
   type UsagePool,
   classifyBillingError,
+  classifyPortalUrl,
   extractUrl,
   formatDate,
   hasSubscription,
@@ -320,6 +321,26 @@ export default function DashboardPage() {
       }
       const url = extractUrl(data);
       if (!url) throw new Error("No portal URL returned by the server");
+
+      const kind = classifyPortalUrl(url);
+      if (kind === "placeholder") {
+        // Backend's dormant fallback — no LS API key, or no ls_customer_id on
+        // file for this account. Navigating would land on a dead domain.
+        setActionError(
+          "Billing isn't linked to this account yet. If you subscribed just now, give it a minute and try again.",
+        );
+        setActionBusy(null);
+        return;
+      }
+      if (kind === "unsigned") {
+        // Still navigate — it's the only URL we have — but say why LS is about
+        // to ask for an email instead of signing the user straight in.
+        console.warn(
+          "[billing] Portal URL has no LS signature; Lemon Squeezy will show its " +
+            "email-verification page. The backend returned an unsigned link " +
+            "(GET /api/v1/billing/portal → customer_portal).",
+        );
+      }
       window.location.href = url;
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Billing failed");

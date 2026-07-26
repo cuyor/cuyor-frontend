@@ -174,6 +174,30 @@ export function extractUrl(data: unknown): string | null {
   return null;
 }
 
+/**
+ * What kind of customer-portal URL the backend handed us.
+ *
+ * Lemon Squeezy billing is passwordless: a portal link only auto-authenticates
+ * when it carries LS's `signature` (and `expires`) query params. A bare
+ * `<store>.lemonsqueezy.com/billing` link has no signature, so LS falls back to
+ * its "enter your email to continue" verification page — the symptom users
+ * report as "it asks me to log in".
+ *
+ * `placeholder` is the backend's dormant fallback (cuyor.test), returned when it
+ * has no LS API key or no `ls_customer_id` on file for the account.
+ */
+export type PortalUrlKind = "signed" | "unsigned" | "placeholder";
+
+export function classifyPortalUrl(url: string): PortalUrlKind {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith("cuyor.test")) return "placeholder";
+    return parsed.searchParams.has("signature") ? "signed" : "unsigned";
+  } catch {
+    return "placeholder";
+  }
+}
+
 export function formatDate(iso: string | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
