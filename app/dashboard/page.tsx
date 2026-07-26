@@ -610,7 +610,7 @@ function StatusView({
         </div>
 
         {/* Right: circular usage rings, one per credit pool (percentage only) */}
-        {usage && <UsageRings usage={usage} />}
+        {usage && <UsageRings usage={usage} plan={plan} />}
       </div>
     </section>
   );
@@ -623,8 +623,19 @@ const USAGE_POOLS: { key: string; label: string }[] = [
   { key: "transcript", label: "Transcript" },
 ];
 
-function UsageRings({ usage }: { usage: UsageSummary }) {
-  const present = USAGE_POOLS.filter((p) => usage.features[p.key]);
+function UsageRings({
+  usage,
+  plan,
+}: {
+  usage: UsageSummary;
+  plan: PlanId | undefined;
+}) {
+  const present = USAGE_POOLS.filter((p) => {
+    if (!usage.features[p.key]) return false;
+    // Basic has no transcript credits (0 by default) — don't show that ring.
+    if (p.key === "transcript" && plan === "basic") return false;
+    return true;
+  });
   if (present.length === 0) return null;
 
   return (
