@@ -10,11 +10,13 @@ import {
   DownloadIcon,
   ChevronRightIcon,
   ReloadIcon,
+  ReaderIcon,
   ExclamationTriangleIcon,
   RocketIcon,
 } from "@radix-ui/react-icons";
 import { toast } from "sonner";
 import CuyorIcon from "@/components/ui/cuyor-icon";
+import SetupGuide from "@/components/setup-guide";
 import { PLANS, CHECKOUT_ENABLED, type PlanId } from "@/lib/plans";
 import {
   type EntitlementResponse,
@@ -460,11 +462,23 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-12">
-        <div className="mb-10">
-          <h1 className="text-2xl font-bold text-foreground mb-1">
-            Welcome back
-          </h1>
-          {email && <p className="text-foreground/60">{email}</p>}
+        <div className="mb-10 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-foreground mb-1">
+              Welcome back
+            </h1>
+            {email && <p className="text-foreground/60 truncate">{email}</p>}
+          </div>
+
+          {/* The setup steps live at the bottom of the page, so signpost them
+              here where a first-time user actually looks. */}
+          <a
+            href="#setup"
+            className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[--border-secondary] text-sm font-medium text-foreground/70 hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            <ReaderIcon className="w-4 h-4" />
+            Setup instructions
+          </a>
         </div>
 
         {error && (
@@ -524,6 +538,15 @@ export default function DashboardPage() {
             onDownload={handleDownload}
           />
         )}
+
+        {/* Walkthrough: everything between "downloaded" and "it works".
+            scroll-mt clears the sticky header when jumped to via #setup. */}
+        <section id="setup" className="mt-12 scroll-mt-20">
+          <h2 className="text-sm font-medium text-foreground/70 uppercase tracking-wide mb-6">
+            Setting Up
+          </h2>
+          <SetupGuide />
+        </section>
       </main>
 
       {/* Cancel / plan change are always confirmed before the call goes out. */}
@@ -575,7 +598,7 @@ function CancelledBanner({ expiresAt }: { expiresAt: string }) {
       <p className="text-sm text-foreground/70">
         Your plan is cancelled and will end on{" "}
         <strong>{formatDate(expiresAt)}</strong>. You&apos;ll move to Basic after
-        that — everything keeps working until then.
+        that. Everything keeps working until then.
       </p>
     </section>
   );
@@ -819,9 +842,9 @@ function StatusView({
               Your last payment failed
             </h2>
             <p className="text-sm text-foreground/70">
-              Check your email from Lemon Squeezy to update your card — the link
-              there is secure and specific to you. Your {planName} access
-              continues until <strong>{formatDate(expiresAt)}</strong>.
+              Check your email from Lemon Squeezy to update your card. That link
+              is secure and specific to you. Your {planName} access continues
+              until <strong>{formatDate(expiresAt)}</strong>.
             </p>
           </div>
         </div>
@@ -885,7 +908,7 @@ function StatusView({
             <p className="text-sm text-foreground/60 mb-4">
               {cancelled ? (
                 <>
-                  Ends on <strong>{formatDate(expiresAt)}</strong> — no further
+                  Ends on <strong>{formatDate(expiresAt)}</strong>. No further
                   charges.
                 </>
               ) : (

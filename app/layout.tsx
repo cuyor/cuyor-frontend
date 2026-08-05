@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "cuyor | the visual gps for your mac",
     description:
-      "ai shouldn't hijack your mouse. it should guide your hand. get exclusive access to the closed beta.",
+      "ai shouldn't hijack your mouse. it should guide your hand. get exclusive early access.",
     images: ["https://cuyor.com/og-image.jpg"],
     creator: "@cuyor",
   },
@@ -61,7 +61,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
+    <html
+      lang="en"
+      className={cn("font-sans scroll-smooth", geist.variable)}
+    >
       <body className={`${interSans.variable} ${Avenir.className} antialiased`}>
         {children}
         <Toaster richColors closeButton />

@@ -12,6 +12,7 @@ import {
 } from "@radix-ui/react-icons";
 
 import CuyorIcon from "@/components/ui/cuyor-icon";
+import SetupGuide, { SUPPORT_EMAIL } from "@/components/setup-guide";
 import { Highlighter } from "@/components/ui/highlighter";
 import { WordRotate } from "@/components/ui/word-rotate";
 import WindowAnimation from "@/components/ui/window-animation";
@@ -105,13 +106,13 @@ export default function Home() {
     },
 
     {
-      title: "Cuyor v0.1.2: Beta feedback improvements",
+      title: "Cuyor v0.1.2: Feedback improvements",
       subtitle: "Product",
       icon: <CodeIcon className="w-3 h-3" />,
     },
 
     {
-      title: "Cuyor v0.1.1: Private Beta Launch",
+      title: "Cuyor v0.1.1: Private Launch",
       subtitle: "Announcement",
       icon: <RocketIcon className="w-3 h-3" />,
     },
@@ -502,6 +503,32 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Setup walkthrough. Same steps the dashboard shows, plus the
+            account-creation step that dashboard visitors have already done. */}
+        <section
+          id="setup"
+          className="px-8 py-24 border-t border-[--border-secondary]"
+        >
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col lg:flex-row gap-12 lg:gap-24">
+              <div className="lg:w-72 shrink-0 lg:sticky lg:top-24 lg:self-start">
+                <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+                  Up and running
+                  <br />
+                  in five minutes
+                </h2>
+                <p className="text-sm leading-relaxed text-foreground/50 mt-3 lg:pr-6">
+                  Six steps from sign up to your first guided walkthrough.
+                </p>
+              </div>
+
+              <div className="flex-1 min-w-0 max-w-2xl">
+                <SetupGuide showRegisterStep />
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
 
       {/* Footer */}
@@ -632,8 +659,19 @@ export default function Home() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
-                    Use cases
+                  <a
+                    href="#setup"
+                    className="hover:text-white transition-colors"
+                  >
+                    Setup guide
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={`mailto:${SUPPORT_EMAIL}`}
+                    className="hover:text-white transition-colors"
+                  >
+                    Get help
                   </a>
                 </li>
               </ul>
@@ -658,7 +696,10 @@ export default function Home() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a
+                    href={`mailto:${SUPPORT_EMAIL}`}
+                    className="hover:text-white transition-colors"
+                  >
                     Contact
                   </a>
                 </li>
@@ -666,9 +707,16 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="border-t border-white/10 pt-8 flex items-center justify-between">
+          <div className="border-t border-white/10 pt-8 flex flex-wrap items-center justify-between gap-4">
             <p className="text-xs text-white/40">
-              © {new Date().getFullYear()} Cuyor. All rights reserved.
+              © {new Date().getFullYear()} Cuyor. All rights reserved. Need a
+              hand?{" "}
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                {SUPPORT_EMAIL}
+              </a>
             </p>
             <div className="flex items-center gap-4">
               <a
